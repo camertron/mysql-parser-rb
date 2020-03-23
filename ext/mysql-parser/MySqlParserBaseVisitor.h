@@ -14,7 +14,6 @@
  */
 class  MySqlParserBaseVisitor : public MySqlParserVisitor {
 public:
-
   virtual antlrcpp::Any visitRoot(MySqlParser::RootContext *ctx) override {
     return visitChildren(ctx);
   }
