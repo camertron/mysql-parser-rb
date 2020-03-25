@@ -9,3 +9,4 @@ end
 
 visitor = MyVisitor.new
 MySqlParser::Parser.new.parse('./test.sql', visitor)
+puts 'done!'

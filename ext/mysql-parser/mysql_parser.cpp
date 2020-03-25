@@ -17,11 +17,19 @@ using namespace antlr4;
 class MySqlVisitor : public MySqlParserBaseVisitor {
 public:
   MySqlVisitor() { }
+  ~MySqlVisitor() {
+    cout << "deconstructing MySqlVisitor" << endl;
+  }
 };
 
 class MySqlVisitorProxy : public MySqlVisitor, public Rice::Director {
 public:
   MySqlVisitorProxy(Object self) : Rice::Director(self) { }
+
+  ~MySqlVisitorProxy() {
+    cout << "deconstructing MySqlVisitorProxy" << endl;
+    Rice::Director::~Director();
+  }
 
   virtual antlrcpp::Any visitRoot(MySqlParser::RootContext *ctx) override {
     getSelf().call("visit_root", ctx);
@@ -40,15 +48,26 @@ VALUE mysql_parser_parse(string file, MySqlVisitor* visitor) {
   ANTLRInputStream input(stream);
   MySqlLexer lexer(&input);
   CommonTokenStream tokens(&lexer);
-  // Ruby segfaults if you delete this, no idea why.
-  // Something must be holding a reference to it, but what?
-  MySqlParser* parser = new MySqlParser(&tokens);
-  MySqlParser::RootContext* tree = parser -> root();
-  visitor -> visit(tree);
+  MySqlParser parser(&tokens);
+  visitor -> visit(parser.root());
   stream.close();
 
   return Qnil;
 }
+
+// VALUE mysql_parser_parse(string file, MySqlVisitor* visitor) {
+//   ifstream stream;
+//   stream.open(file);
+
+//   ANTLRInputStream input(stream);
+//   MySqlLexer lexer(&input);
+//   CommonTokenStream* tokens = new CommonTokenStream(&lexer);
+//   MySqlParser* parser = new MySqlParser(tokens);
+//   visitor -> visit(parser -> root());
+//   stream.close();
+
+//   return Qnil;
+// }
 
 extern "C"
 void Init_mysql_parser() {
