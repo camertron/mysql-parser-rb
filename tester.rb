@@ -1,9 +1,16 @@
 require './mysql_parser'
+require 'pry-byebug'
 
 class MyVisitor < MySqlParser::MySqlVisitor
   def visit_root(ctx)
     puts 'visit_root called from rubyland!'
-    puts ctx.eof.symbol.text
+    puts ctx.sql_statements.sql_statement.inspect
+    visit_children(ctx)
+  end
+
+  def visit_sql_statements(ctx)
+    puts 'visit_sql_statements called from rubyland!'
+    puts ctx.sql_statement.inspect
   end
 end
 

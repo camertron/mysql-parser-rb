@@ -16,7 +16,6 @@ MySqlParser::MySqlParser(TokenStream *input) : Parser(input) {
 }
 
 MySqlParser::~MySqlParser() {
-  std::cout << "deconstructing MySqlParser" << std::endl;
   delete _interpreter;
 }
 

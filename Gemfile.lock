@@ -9,6 +9,7 @@ GEM
   specs:
     byebug (11.1.1)
     coderay (1.1.2)
+    dry-inflector (0.2.0)
     method_source (1.0.0)
     pry (0.13.0)
       coderay (~> 1.1)
@@ -24,6 +25,7 @@ PLATFORMS
   x86_64-darwin-17
 
 DEPENDENCIES
+  dry-inflector
   pry-byebug
   python-parser!
   rake
