@@ -17,5 +17,6 @@ task :generate do
     File.read('ext/mysql-parser/MysqlParserBaseVisitor.h')
   )
 
-  File.write('ext/mysql-parser/mysql_parser.cpp', generator.generate)
+  File.write('ext/mysql-parser/mysql_parser_new.cpp', generator.generate)
+  # puts generator.generate
 end

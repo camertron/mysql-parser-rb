@@ -26,11 +26,6 @@ public:
   Object emptyStatement();
 };
 
-class MySqlVisitor : public MySqlParserBaseVisitor {
-public:
-  MySqlVisitor() { }
-};
-
 Class rb_cParseTree;
 
 Class rb_cRootContext;
@@ -95,9 +90,19 @@ Object SqlStatementsContextProxy::emptyStatement() {
   return Array(vec.begin(), vec.end());
 }
 
+class MySqlVisitor : public MySqlParserBaseVisitor {
+public:
+  MySqlVisitor() { }
+};
+
 class MySqlVisitorProxy : public MySqlVisitor, public Rice::Director {
 public:
   MySqlVisitorProxy(Object self) : Rice::Director(self) { }
+
+  Object ruby_visit(tree::ParseTree *node) {
+    MySqlVisitor::visit(node);
+    return Rice::Nil;
+  }
 
   Object ruby_visitChildren(tree::ParseTree *node) {
     MySqlVisitor::visitChildren(node);
@@ -152,13 +157,12 @@ void Init_mysql_parser() {
     .define_class<MySqlVisitor>("MySqlVisitor")
     .define_director<MySqlVisitorProxy>()
     .define_constructor(Constructor<MySqlVisitorProxy, Object>())
+    .define_method("visit", &MySqlVisitorProxy::ruby_visit)
     .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren);
 
   rb_cRootContext = rb_mMySqlParser
     .define_class<RootContextProxy, tree::ParseTree>("RootContext")
     .define_method("sql_statements", &RootContextProxy::sqlStatements);
-    // .define_method("eof", &RootContextProxy::EOF);
-    // .define_method("rule_index", &RootContextProxy::getRuleIndex)
 
   rb_cSqlStatementsContext = rb_mMySqlParser
     .define_class<SqlStatementsContextProxy, tree::ParseTree>("SqlStatementsContext")

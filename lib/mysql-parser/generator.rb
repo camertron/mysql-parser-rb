@@ -27,9 +27,17 @@ module MySqlParser
         using namespace Rice;
         using namespace antlr4;
 
-        #{visitor}
+        #{proxy_class_headers}
 
-        #{visitor_proxy}
+        #{proxy_class_declarations}
+
+        #{conversions}
+
+        #{proxy_class_methods}
+
+        #{visitor_generator.visitor}
+
+        #{visitor_generator.visitor_proxy}
 
         #{parse_function}
 
@@ -39,25 +47,39 @@ module MySqlParser
 
     private
 
-    def init_function
-      <<~END
-        extern "C"
-        void Init_mysql_parser() {
-          Module rb_mMySqlParser = define_module("MySqlParser");
+    def proxy_class_headers
+      @proxy_class_headers ||= contexts
+        .map(&:proxy_class_header)
+        .join("\n")
+    end
 
-          rb_mMySqlParser
-            .define_class("Parser")
-            .define_method("parse", &mysql_parser_parse);
+    def proxy_class_declarations
+      @proxy_class_declarations ||= contexts
+        .map { |ctx| "Class #{ctx.proxy_class_variable}" }
+        .concat(['Class rb_cParseTree'])
+        .join("\n")
+    end
 
-          rb_mMySqlParser
-            .define_class<MySqlVisitor>("MySqlVisitor")
-            .define_director<MySqlVisitorProxy>()
-            .define_constructor(Constructor<MySqlVisitorProxy, Object>())
-        #{visitor_proxy_methods('    ').join("\n")};
+    def conversions
+      @conversions ||= begin
+        context_conversions = contexts.map(&:conversions).join("\n")
 
-        #{class_wrappers_str('  ')}
-        }
-      END
+        <<~END
+          template <>
+          Object to_ruby<tree::ParseTree*>(tree::ParseTree* const &x) {
+            if (!x) return Nil;
+            return Data_Object<tree::ParseTree>(x, rb_cParseTree, nullptr, nullptr);
+          }
+
+          #{context_conversions}
+        END
+      end
+    end
+
+    def proxy_class_methods
+      @proxy_class_methods ||= contexts
+        .flat_map(&:proxy_class_methods)
+        .join("\n")
     end
 
     def parse_function
@@ -70,9 +92,9 @@ module MySqlParser
           MySqlLexer lexer(&input);
           // these both need to be allocated on the heap or Ruby segfaults
           // when the program exits
-          CommonTokenStream* tokens = new CommonTokenStream(&lexer);
-          MySqlParser* parser = new MySqlParser(tokens);
-          visitor -> visit(parser -> root());
+          CommonTokenStream tokens(&lexer);
+          MySqlParser parser(&tokens);
+          visitor -> visit(parser.root());
           stream.close();
 
           return Qnil;
@@ -80,44 +102,29 @@ module MySqlParser
       END
     end
 
-    def visitor
-      @visitor ||= <<~END
-        class MySqlVisitor : public MySqlParserBaseVisitor {
-        public:
-          MySqlVisitor() { }
-        };
-      END
-    end
-
-    def visitor_proxy
-      vms = visitor_methods.flat_map do |visitor_method|
-        context = "#{capitalize(visitor_method.sub(/\Avisit/, ''))}Context"
-
-        [
-          "  virtual antlrcpp::Any #{visitor_method}(MySqlParser::#{context} *ctx) override {",
-          "    getSelf().call(\"#{underscore(visitor_method)}\", ctx);",
-          "    return Rice::Nil;",
-          "  }\n",
-          "  antlrcpp::Any default_#{visitor_method}(MySqlParser::#{context} *ctx) {",
-          "    return MySqlVisitor::#{visitor_method}(ctx);",
-          "  }\n"
-        ]
-      end
-
+    def init_function
       <<~END
-        class MySqlVisitorProxy : public MySqlVisitor, public Rice::Director {
-        public:
-          MySqlVisitorProxy(Object self) : Rice::Director(self) { }
+        extern "C"
+        void Init_mysql_parser() {
+          Module rb_mMySqlParser = define_module("MySqlParser");
 
-        #{vms.join("\n")}
-        };
+          rb_mMySqlParser
+            .define_class("Parser")
+            .define_method("parse", &mysql_parser_parse);
+
+          rb_cParseTree = rb_mMySqlParser
+            .define_class<tree::ParseTree>("ParseTree");
+
+          rb_mMySqlParser
+            .define_class<MySqlVisitor>("MySqlVisitor")
+            .define_director<MySqlVisitorProxy>()
+            .define_constructor(Constructor<MySqlVisitorProxy, Object>())
+            .define_method("visit", &MySqlVisitorProxy::ruby_visit)
+            .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren);
+
+        #{class_wrappers_str('  ')}
+        }
       END
-    end
-
-    def visitor_proxy_methods(indent)
-      @visitor_proxy_methods ||= visitor_methods.map do |visitor_method|
-        "#{indent}.define_method(\"#{underscore(visitor_method)}\", &MySqlVisitorProxy::default_#{visitor_method})"
-      end
     end
 
     def class_wrappers_str(indent)
@@ -138,6 +145,8 @@ module MySqlParser
         .flatten
         .uniq
         .map { |name| Context.new(name, cpp_parser_source) }
+
+        # .select { |ctx| %w(RootContext SqlStatementsContext SqlStatementContext).include?(ctx) }
     end
 
     def visitor_methods
@@ -145,6 +154,11 @@ module MySqlParser
         .scan(/visit[A-Z][^\(\s]*/)
         .flatten
         .uniq
+        # .select { |mtd| %w(visitRoot visitSqlStatements visitSqlStatement).include?(mtd) }
+    end
+
+    def visitor_generator
+      @visitor_generator ||= VisitorGenerator.new(visitor_methods)
     end
   end
 end
