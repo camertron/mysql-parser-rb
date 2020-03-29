@@ -28,6 +28,20 @@ module MySqlParser
         using namespace Rice;
         using namespace antlr4;
 
+        class ContextProxy {
+        public:
+          ContextProxy(tree::ParseTree* orig) {
+            this -> orig = orig;
+          }
+
+          tree::ParseTree* getOriginal() {
+            return this -> orig;
+          }
+
+        protected:
+          tree::ParseTree* orig;
+        };
+
         #{proxy_class_headers}
 
         #{proxy_class_declarations}
@@ -91,8 +105,6 @@ module MySqlParser
 
           ANTLRInputStream input(stream);
           MySqlLexer lexer(&input);
-          // these both need to be allocated on the heap or Ruby segfaults
-          // when the program exits
           CommonTokenStream tokens(&lexer);
           MySqlParser parser(&tokens);
           visitor -> visit(parser.root());
@@ -123,6 +135,9 @@ module MySqlParser
             .define_method("visit", &MySqlVisitorProxy::ruby_visit)
             .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren)
         #{visitor_generator.visitor_proxy_methods('    ').join("\n")};
+
+          rb_mMySqlParser
+            .define_class<ContextProxy>("Context");
 
         #{class_wrappers_str('  ')}
         }

@@ -33,11 +33,8 @@ module MySqlParser
 
         [
           "  virtual antlrcpp::Any #{visitor_method}(MySqlParser::#{context} *ctx) override {",
-          "    auto proxy = static_cast<#{context}Proxy*>(ctx);",
-          "    return getSelf().call(\"#{underscore(visitor_method)}\", proxy);",
-          "  }\n",
-          "  antlrcpp::Any default_#{visitor_method}(MySqlParser::#{context} *ctx) {",
-          "    return MySqlVisitor::#{visitor_method}(ctx);",
+          "    #{context}Proxy proxy(ctx);",
+          "    return getSelf().call(\"#{underscore(visitor_method)}\", &proxy);",
           "  }\n"
         ]
       end
@@ -47,13 +44,13 @@ module MySqlParser
         public:
           MySqlVisitorProxy(Object self) : Rice::Director(self) { }
 
-          Object ruby_visit(tree::ParseTree *node) {
-            MySqlVisitor::visit(node);
+          Object ruby_visit(ContextProxy* proxy) {
+            visit(proxy -> getOriginal());
             return Rice::Nil;
           }
 
-          Object ruby_visitChildren(tree::ParseTree *node) {
-            MySqlVisitor::visitChildren(node);
+          Object ruby_visitChildren(ContextProxy* proxy) {
+            visitChildren(proxy -> getOriginal());
             return Rice::Nil;
           }
 
@@ -64,7 +61,7 @@ module MySqlParser
 
     def visitor_proxy_methods(indent)
       @visitor_proxy_methods ||= each_visitor_method.map do |visitor_method|
-        "#{indent}.define_method(\"#{underscore(visitor_method)}\", &MySqlVisitorProxy::default_#{visitor_method})"
+        "#{indent}.define_method(\"#{underscore(visitor_method)}\", &MySqlVisitorProxy::ruby_visitChildren)"
       end
     end
   end

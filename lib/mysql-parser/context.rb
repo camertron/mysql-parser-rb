@@ -28,8 +28,9 @@ module MySqlParser
           .join("\n")
 
         <<~END
-          class #{name}Proxy : public MySqlParser::#{name} {
+          class #{name}Proxy : public ContextProxy {
           public:
+            #{name}Proxy(tree::ParseTree* ctx) : ContextProxy(ctx) {};
           #{method_signatures}
           };
         END
@@ -61,14 +62,14 @@ module MySqlParser
         if ctx_method.returns_vector?
           <<~END
             Object #{name}Proxy::#{ctx_method.cpp_name}(#{ctx_method.raw_args}) {
-              std::vector<MySqlParser::#{return_type} *> vec = MySqlParser::#{name}::#{ctx_method.name}(#{params});
+              std::vector<MySqlParser::#{return_type} *> vec = ((MySqlParser::#{name}*)orig) -> #{ctx_method.name}(#{params});
               return Array(vec.begin(), vec.end());
             }
           END
         else
           <<~END
             Object #{name}Proxy::#{ctx_method.cpp_name}(#{ctx_method.raw_args}) {
-              auto proxy = static_cast<#{return_proxy_type}*>(MySqlParser::#{name}::#{ctx_method.name}(#{params}));
+              #{return_proxy_type} proxy(((MySqlParser::#{name}*)orig) -> #{ctx_method.name}(#{params}));
               return to_ruby(proxy);
             }
           END
@@ -78,7 +79,7 @@ module MySqlParser
 
     def class_wrapper(module_var)
       @class_wrapper ||= begin
-        lines = ["#{proxy_class_variable} = #{module_var}", ".define_class<#{name}Proxy, tree::ParseTree>(\"#{name}\")"]
+        lines = ["#{proxy_class_variable} = #{module_var}", ".define_class<#{name}Proxy, ContextProxy>(\"#{name}\")"]
 
         each_context_method do |ctx_method|
           lines << ".define_method(\"#{underscore(ctx_method.cpp_name)}\", &#{name}Proxy::#{ctx_method.cpp_name})"

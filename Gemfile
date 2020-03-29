@@ -4,7 +4,7 @@ gemspec
 
 group :development do
   gem 'pry-byebug'
-  gem 'dry-inflector'
+  gem 'benchmark-ips'
 end
 
 group :development, :test do
