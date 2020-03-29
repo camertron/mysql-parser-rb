@@ -54,21 +54,21 @@ module MySqlParser
 
     def proxy_class_methods
       each_context_method.map do |ctx_method|
-        return_type = capitalize(ctx_method.name)
+        return_type = "#{capitalize(ctx_method.name)}Context"
         return_proxy_type = "#{return_type}Proxy"
         params = ctx_method.args.map(&:name).join(', ')
 
         if ctx_method.returns_vector?
           <<~END
-            Object #{name}Proxy::#{ctx_method.name}(#{ctx_method.raw_args}) {
+            Object #{name}Proxy::#{ctx_method.cpp_name}(#{ctx_method.raw_args}) {
               std::vector<MySqlParser::#{return_type} *> vec = MySqlParser::#{name}::#{ctx_method.name}(#{params});
               return Array(vec.begin(), vec.end());
             }
           END
         else
           <<~END
-            Object #{name}Proxy::#{ctx_method.name}(#{ctx_method.raw_args}) {
-              auto proxy = static_cast<#{return_proxy_type}*>(MySqlParser::#{return_type}::#{ctx_method.name}(#{params}));
+            Object #{name}Proxy::#{ctx_method.cpp_name}(#{ctx_method.raw_args}) {
+              auto proxy = static_cast<#{return_proxy_type}*>(MySqlParser::#{name}::#{ctx_method.name}(#{params}));
               return to_ruby(proxy);
             }
           END

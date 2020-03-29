@@ -1,7 +1,7 @@
 module MySqlParser
   class ContextMethod
     RULE_METHODS = %w(enterRule exitRule getRuleIndex).freeze
-    META_METHODS = %w(accept).freeze
+    META_METHODS = %w(accept copyFrom).freeze
 
     attr_reader :name, :raw_args, :return_type, :context
 

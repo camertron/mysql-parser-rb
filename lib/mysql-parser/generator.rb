@@ -19,6 +19,7 @@ module MySqlParser
         #include "MySqlParserBaseVisitor.h"
         #include "MySqlLexer.h"
 
+        #include "rice/Array.hpp"
         #include "rice/Class.hpp"
         #include "rice/Constructor.hpp"
         #include "rice/Director.hpp"
@@ -55,8 +56,8 @@ module MySqlParser
 
     def proxy_class_declarations
       @proxy_class_declarations ||= contexts
-        .map { |ctx| "Class #{ctx.proxy_class_variable}" }
-        .concat(['Class rb_cParseTree'])
+        .map { |ctx| "Class #{ctx.proxy_class_variable};" }
+        .concat(['Class rb_cParseTree;'])
         .join("\n")
     end
 
@@ -120,7 +121,8 @@ module MySqlParser
             .define_director<MySqlVisitorProxy>()
             .define_constructor(Constructor<MySqlVisitorProxy, Object>())
             .define_method("visit", &MySqlVisitorProxy::ruby_visit)
-            .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren);
+            .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren)
+        #{visitor_generator.visitor_proxy_methods('    ').join("\n")};
 
         #{class_wrappers_str('  ')}
         }
@@ -145,8 +147,6 @@ module MySqlParser
         .flatten
         .uniq
         .map { |name| Context.new(name, cpp_parser_source) }
-
-        # .select { |ctx| %w(RootContext SqlStatementsContext SqlStatementContext).include?(ctx) }
     end
 
     def visitor_methods
@@ -154,7 +154,6 @@ module MySqlParser
         .scan(/visit[A-Z][^\(\s]*/)
         .flatten
         .uniq
-        # .select { |mtd| %w(visitRoot visitSqlStatements visitSqlStatement).include?(mtd) }
     end
 
     def visitor_generator

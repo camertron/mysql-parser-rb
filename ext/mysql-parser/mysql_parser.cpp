@@ -15,15 +15,33 @@ using namespace std;
 using namespace Rice;
 using namespace antlr4;
 
-class RootContextProxy : public MySqlParser::RootContext {
+class ContextProxy {
 public:
+  ContextProxy(tree::ParseTree* orig) {
+    this -> orig = orig;
+  }
+
+  tree::ParseTree* getOriginal();
+
+protected:
+  tree::ParseTree* orig;
+};
+
+class RootContextProxy : public ContextProxy {
+public:
+  RootContextProxy(tree::ParseTree* ctx) : ContextProxy(ctx) {};
   Object sqlStatements();
 };
 
-class SqlStatementsContextProxy : public MySqlParser::SqlStatementsContext {
+class SqlStatementsContextProxy : public ContextProxy {
 public:
+  SqlStatementsContextProxy(tree::ParseTree* ctx) : ContextProxy(ctx) {};
   Object sqlStatement();
-  Object emptyStatement();
+};
+
+class SqlStatementContextProxy : public ContextProxy {
+public:
+  SqlStatementContextProxy(tree::ParseTree* ctx) : ContextProxy(ctx) {};
 };
 
 Class rb_cParseTree;
@@ -31,7 +49,6 @@ Class rb_cParseTree;
 Class rb_cRootContext;
 Class rb_cSqlStatementsContext;
 Class rb_cSqlStatementContext;
-Class rb_cEmptyStatementContext;
 
 template <>
 Object to_ruby<tree::ParseTree*>(tree::ParseTree* const &x) {
@@ -70,23 +87,22 @@ Object to_ruby<MySqlParser::SqlStatementContext*>(MySqlParser::SqlStatementConte
 }
 
 template <>
-Object to_ruby<MySqlParser::EmptyStatementContext*>(MySqlParser::EmptyStatementContext* const &x) {
+Object to_ruby<SqlStatementContextProxy*>(SqlStatementContextProxy* const &x) {
   if (!x) return Nil;
-  return Data_Object<MySqlParser::EmptyStatementContext>(x, rb_cEmptyStatementContext, nullptr, nullptr);
+  return Data_Object<SqlStatementContextProxy>(x, rb_cSqlStatementContext, nullptr, nullptr);
+}
+
+tree::ParseTree* ContextProxy::getOriginal() {
+  return this -> orig;
 }
 
 Object RootContextProxy::sqlStatements() {
-  auto proxy = static_cast<SqlStatementsContextProxy*>(MySqlParser::RootContext::sqlStatements());
+  SqlStatementsContextProxy proxy(((MySqlParser::RootContext*)orig) -> sqlStatements());
   return to_ruby(proxy);
 }
 
 Object SqlStatementsContextProxy::sqlStatement() {
-  std::vector<MySqlParser::SqlStatementContext *> vec = MySqlParser::SqlStatementsContext::sqlStatement();
-  return Array(vec.begin(), vec.end());
-}
-
-Object SqlStatementsContextProxy::emptyStatement() {
-  std::vector<MySqlParser::EmptyStatementContext *> vec = MySqlParser::SqlStatementsContext::emptyStatement();
+  std::vector<MySqlParser::SqlStatementContext *> vec = ((MySqlParser::SqlStatementsContext*)orig) -> sqlStatement();
   return Array(vec.begin(), vec.end());
 }
 
@@ -99,24 +115,52 @@ class MySqlVisitorProxy : public MySqlVisitor, public Rice::Director {
 public:
   MySqlVisitorProxy(Object self) : Rice::Director(self) { }
 
-  Object ruby_visit(tree::ParseTree *node) {
-    MySqlVisitor::visit(node);
+  Object ruby_visit(ContextProxy* proxy) {
+    cout << "called ruby_visit" << endl;
+    visit(proxy -> getOriginal());
     return Rice::Nil;
   }
 
-  Object ruby_visitChildren(tree::ParseTree *node) {
-    MySqlVisitor::visitChildren(node);
+  Object ruby_visitChildren(ContextProxy* proxy) {
+    cout << "called ruby_visitChildren" << endl;
+    visitChildren(proxy -> getOriginal());
     return Rice::Nil;
   }
 
-  virtual antlrcpp::Any visitRoot(MySqlParser::RootContext *ctx) override {
-    auto proxy = static_cast<RootContextProxy*>(ctx);
-    return getSelf().call("visit_root", proxy);
+  virtual antlrcpp::Any visitRoot(MySqlParser::RootContext* ctx) override {
+    cout << "called visitRoot" << endl;
+    RootContextProxy proxy(ctx);
+    return getSelf().call("visit_root", &proxy);
   }
 
-  virtual antlrcpp::Any visitSqlStatements(MySqlParser::SqlStatementsContext *ctx) override {
-    auto proxy = static_cast<SqlStatementsContextProxy*>(ctx);
-    return getSelf().call("visit_sql_statements", proxy);
+  Object default_visitRoot(RootContextProxy* ctx) {
+    cout << "called default_visitRoot" << endl;
+    return ruby_visitChildren(ctx);
+  }
+
+  virtual antlrcpp::Any visitSqlStatements(MySqlParser::SqlStatementsContext* ctx) override {
+    cout << "called visitSqlStatements" << endl;
+    SqlStatementsContextProxy proxy(ctx);
+    cout << "visitSqlStatements: cast successful" << endl;
+    auto retval = getSelf().call("visit_sql_statements", &proxy);
+    cout << "visitSqlStatements: ruby call successful" << endl;
+    return retval;
+  }
+
+  Object default_visitSqlStatements(SqlStatementsContextProxy* ctx) {
+    cout << "called default_visitSqlStatements" << endl;
+    return ruby_visitChildren(ctx);
+  }
+
+  virtual antlrcpp::Any visitSqlStatement(MySqlParser::SqlStatementContext* ctx) override {
+    cout << "called visitSqlStatement" << endl;
+    SqlStatementContextProxy proxy(ctx);
+    return getSelf().call("visit_sql_statement", &proxy);
+  }
+
+  Object default_visitSqlStatement(SqlStatementContextProxy* ctx) {
+    cout << "called default_visitSqlStatement" << endl;
+    return ruby_visitChildren(ctx);
   }
 };
 
@@ -158,20 +202,22 @@ void Init_mysql_parser() {
     .define_director<MySqlVisitorProxy>()
     .define_constructor(Constructor<MySqlVisitorProxy, Object>())
     .define_method("visit", &MySqlVisitorProxy::ruby_visit)
-    .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren);
+    .define_method("visit_children", &MySqlVisitorProxy::ruby_visitChildren)
+    .define_method("visit_root", &MySqlVisitorProxy::default_visitRoot)
+    .define_method("visit_sql_statements", &MySqlVisitorProxy::default_visitSqlStatements)
+    .define_method("visit_sql_statement", &MySqlVisitorProxy::default_visitSqlStatement);
+
+  rb_mMySqlParser
+    .define_class<ContextProxy>("Context");
 
   rb_cRootContext = rb_mMySqlParser
-    .define_class<RootContextProxy, tree::ParseTree>("RootContext")
+    .define_class<RootContextProxy, ContextProxy>("RootContext")
     .define_method("sql_statements", &RootContextProxy::sqlStatements);
 
   rb_cSqlStatementsContext = rb_mMySqlParser
-    .define_class<SqlStatementsContextProxy, tree::ParseTree>("SqlStatementsContext")
-    .define_method("sql_statement", &SqlStatementsContextProxy::sqlStatement)
-    .define_method("empty_statement", &SqlStatementsContextProxy::emptyStatement);
+    .define_class<SqlStatementsContextProxy, ContextProxy>("SqlStatementsContext")
+    .define_method("sql_statement", &SqlStatementsContextProxy::sqlStatement);
 
   rb_cSqlStatementContext = rb_mMySqlParser
-    .define_class<MySqlParser::SqlStatementContext>("SqlStatementContext");
-
-  rb_cEmptyStatementContext = rb_mMySqlParser
-    .define_class<MySqlParser::EmptyStatementContext>("EmptyStatementContext");
+    .define_class<SqlStatementContextProxy, ContextProxy>("SqlStatementContext");
 }
